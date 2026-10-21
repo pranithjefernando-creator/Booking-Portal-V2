@@ -1,6 +1,7 @@
 import { Router } from "../lib/http.js";
 import { getTracking, trackingIdentity } from "../lib/trackingCache.js";
 import { canTrackReference, requireTracking, shipmentEvents, trackingHistory, trackingOrganizations, trackingRecords } from "../lib/trackingAccess.js";
+import { trackingDbStatus } from "../lib/trackingDb.js";
 import { requirePermission } from "../rbac.js";
 
 const router = Router();
@@ -10,7 +11,8 @@ router.get("/tracking/meta/organizations", requirePermission("admin.users"), asy
 router.get("/tracking/shipments", requireTracking, async (req, res) => {
   const records = await trackingHistory(req.user);
   res.setHeader("Cache-Control", "private, no-store");
-  res.json({ records, eventsByShipment: records.length ? await shipmentEvents(records) : {} });
+  const { source, loadedAt } = trackingDbStatus();
+  res.json({ records, eventsByShipment: records.length ? await shipmentEvents(records) : {}, source, refreshedAt: loadedAt });
 });
 router.post("/tracking/lookup", requireTracking, async (req, res) => {
   try {

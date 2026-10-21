@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { LifecycleProgress, PageBanner } from "../components/ui.jsx";
 import { IconAnchor, IconBox, IconCal, IconChevron, IconShip } from "../components/icons.jsx";
-import { displayValue, loadTrackingData, mappingName, shipmentLifecycle, trackingRequestFor, trackingEventDateTime, withLiveTracking, UNAVAILABLE } from "../trackingData.js";
+import { displayValue, loadTrackingData, mappingName, shipmentLifecycle, trackingRequestFor, trackingEventDateTime, trackingRefreshedAt, withLiveTracking, UNAVAILABLE } from "../trackingData.js";
 import { api } from "../api.js";
 
 const tabs = ["Overview", "Containers", "Events"];
@@ -79,7 +79,7 @@ export default function ShipmentTracking() {
         </article>)}
         <button className="btn btn-outline container-back-button" onClick={() => setActiveTab("Overview")}>Back to overview <IconChevron size={16} /></button>
       </section>}
-      <div className="tracking-footer-note"><IconAnchor size={17} /><span>{shipment.liveTracking ? "Carrier events and status: Panvaya. Shipment references: CargoWise." : "Shipment references and events: CargoWise."}</span></div>
+      <div className="tracking-footer-note"><IconAnchor size={17} /><span>{shipment.liveTracking ? "Carrier events and status: Panvaya. Shipment references: CargoWise." : "Shipment references and events: CargoWise."}{trackingRefreshedAt() ? ` Data last refreshed: ${trackingRefreshedAt()}.` : ""}</span></div>
     </div>
   );
 }

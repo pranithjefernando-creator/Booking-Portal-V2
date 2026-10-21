@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
 import { effectiveModules } from "../rbac.js";
 import { reference, orgCodeForName } from "../reference.js";
+import { sqlTrackingRecords } from "./trackingDb.js";
 
 const DATASET = new URL("../../../Tracking - Sample Dataset.csv", import.meta.url);
 const EVENTS = new URL("../../data/tracking-events.csv", import.meta.url);
@@ -68,6 +69,8 @@ export function canTrackReference(records, identity) {
 }
 
 export async function trackingRecords() {
+  const sqlRecords = await sqlTrackingRecords();
+  if (sqlRecords) return sqlRecords;
   const info = await stat(DATASET);
   if (cachedDataset?.mtimeMs === info.mtimeMs && cachedDataset.size === info.size) return cachedDataset.records;
   const records = parse(await readFile(DATASET, "utf8"), { columns: true, bom: true, skip_empty_lines: true, relax_column_count: true, trim: true });

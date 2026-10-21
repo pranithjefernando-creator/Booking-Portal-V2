@@ -375,8 +375,16 @@ async function loadShipmentEvents() {
   }
 }
 
+let lastRefresh = "";
+export function trackingRefreshedAt() {
+  if (!lastRefresh) return "";
+  const date = new Date(lastRefresh);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export async function loadTrackingData(request = api.get) {
   const [history, masterResponse] = await Promise.all([request("/tracking/shipments"), fetch("/container-master.csv")]);
+  lastRefresh = history.refreshedAt || "";
   if (!masterResponse.ok) throw new Error(`Unable to load container master data (${masterResponse.status})`);
   const masterByCode = Object.fromEntries(parseCsv(await masterResponse.text()).map((record) => [record.Code, record]));
   return (history.records || []).map((record) => normalize(record, masterByCode)).filter((shipment) => shipment.id).map((shipment) => ({ ...shipment, events: history.eventsByShipment?.[shipment.id] || [] }));
