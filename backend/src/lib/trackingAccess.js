@@ -1,7 +1,7 @@
 import { readFile, stat } from "node:fs/promises";
 import { parse } from "csv-parse/sync";
 import { effectiveModules } from "../rbac.js";
-import { reference, orgDirectory } from "../reference.js";
+import { reference, orgCodeForName } from "../reference.js";
 
 const DATASET = new URL("../../../Tracking - Sample Dataset.csv", import.meta.url);
 const EVENTS = new URL("../../data/tracking-events.csv", import.meta.url);
@@ -9,18 +9,23 @@ let cachedDataset;
 
 function normalized(value) { return String(value || "").trim().toUpperCase(); }
 function partyKey(name) {
-  const match = Object.values(orgDirectory).find((org) => normalized(org.name) === normalized(name));
-  return match ? match.code : `tracking:${normalized(name)}`;
+  return orgCodeForName(name) || `tracking:${normalized(name)}`;
 }
 
-export function trackingOrganizations(records) {
-  const options = new Map(reference.cwOrg.map((org) => [org.code, org]));
+export function trackingPartyOptions(records) {
+  const options = new Map();
   for (const record of records) {
     for (const field of ["Consignor Name", "Consignee Name"]) {
       const name = String(record[field] || "").trim();
       if (name) options.set(partyKey(name), { code: partyKey(name), label: name });
     }
   }
+  return options;
+}
+
+export function trackingOrganizations(records) {
+  const options = new Map(reference.cwOrg.map((org) => [org.code, org]));
+  for (const [code, option] of trackingPartyOptions(records)) options.set(code, option);
   return [...options.values()].sort((left, right) => left.label.localeCompare(right.label));
 }
 

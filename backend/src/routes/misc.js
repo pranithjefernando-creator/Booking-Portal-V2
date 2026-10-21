@@ -2,14 +2,13 @@ import { Router } from "../lib/http.js";
 import { changePassword, issueInitialPassword, removeCredentials, mustChangePassword } from "../auth.js";
 import { db, newUser, canSeeBooking } from "../db.js";
 import { requirePermission, permissionMatrix, PERMISSIONS, MODULES, MODULE_GROUPS, effectiveModules } from "../rbac.js";
-import { reference } from "../reference.js";
+import { reference, isKnownOrg, orgLabel } from "../reference.js";
 import { cwPublicConfig } from "../lib/config.js";
 import { RULE_FIELDS } from "../validation.js";
 import { uuid } from "../db.js";
-import { trackingOrganizations, trackingRecords } from "../lib/trackingAccess.js";
+import { trackingOrganizations, trackingPartyOptions, trackingRecords } from "../lib/trackingAccess.js";
 const router = Router();
-const validOrgCodes = new Set(reference.cwOrg.map((o) => o.code));
-const filterOrgs = (arr) => (Array.isArray(arr) ? arr.filter((c) => validOrgCodes.has(c)) : []);
+const filterOrgs = (arr) => (Array.isArray(arr) ? arr.filter((c) => isKnownOrg(c)) : []);
 const filterMods = (arr) => (Array.isArray(arr) ? arr.filter((m) => MODULES[m]) : []);
 function normalizeRuleConfiguration(input, existing = {}) {
   const name = String(input?.name || "").trim();
@@ -52,9 +51,9 @@ router.post("/users/:id/modules", requirePermission("admin.users"), (req, res) =
 router.post("/users/:id/tracking-scope", requirePermission("admin.users"), async (req, res) => {
   const user = db.users.find((item) => item.id === req.params.id);
   if (!user) return res.status(404).json({ error: "User not found" });
-  const allowed = new Set(trackingOrganizations(await trackingRecords()).map((org) => org.code));
+  const parties = trackingPartyOptions(await trackingRecords());
   const requested = req.body?.trackingOrgs;
-  if (!Array.isArray(requested) || requested.some((code) => !allowed.has(code))) return res.status(400).json({ error: "Provide valid tracking organizations" });
+  if (!Array.isArray(requested) || requested.some((code) => !parties.has(code) && !isKnownOrg(code))) return res.status(400).json({ error: "Provide valid tracking organizations" });
   user.trackingOrgs = [...new Set(requested)];
   res.json(user);
 });
@@ -62,8 +61,33 @@ router.post("/users/:id/booking-scope", requirePermission("admin.users"), (req, 
 router.post("/users/:id/booking-partners", requirePermission("admin.users"), (req, res) => { const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: "User not found" }); const allow = new Set(u.bookingOrgs || []); const within = (arr) => filterOrgs(arr).filter((c) => allow.size === 0 || allow.has(c)); u.bookingShipperOrgs = within(req.body?.shipperOrgs); u.bookingConsigneeOrgs = within(req.body?.consigneeOrgs); res.json(u); });
 router.post("/users/:id/order-scope", requirePermission("admin.users"), (req, res) => { const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: "User not found" }); u.orderOrgs = filterOrgs(req.body?.orderOrgs); const a = new Set(u.orderOrgs); u.orderSupplierOrgs = (u.orderSupplierOrgs || []).filter((c) => a.has(c)); u.orderBuyerOrgs = (u.orderBuyerOrgs || []).filter((c) => a.has(c)); res.json(u); });
 router.post("/users/:id/order-partners", requirePermission("admin.users"), (req, res) => { const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: "User not found" }); const allow = new Set(u.orderOrgs || []); const within = (arr) => filterOrgs(arr).filter((c) => allow.size === 0 || allow.has(c)); u.orderSupplierOrgs = within(req.body?.supplierOrgs); u.orderBuyerOrgs = within(req.body?.buyerOrgs); res.json(u); });
-router.get("/reference", (req, res) => res.json(reference));
-router.get("/reference/:type", (req, res) => { const list = reference[req.params.type]; if (!list) return res.status(404).json({ error: "Unknown reference type" }); res.json(list); });
+router.get("/reference", (req, res) => { const { cwOrg, ...rest } = reference; res.json(rest); });
+// Organisation master is far too large to ship whole; clients search it and resolve labels for selected codes.
+const ORG_LIMIT_MAX = 50;
+router.get("/orgs/search", requirePermission("admin.users"), async (req, res) => {
+  const q = String(req.query.q || "").trim().toLowerCase();
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), ORG_LIMIT_MAX);
+  const parties = req.query.kind === "tracking" ? trackingPartyOptions(await trackingRecords()) : new Map();
+  const items = []; let hasMore = false;
+  const consider = (org, strict) => {
+    if (items.length > limit) return;
+    const code = org.code.toLowerCase(); const label = org.label.toLowerCase();
+    const hit = !q || (strict ? code.startsWith(q) || label.startsWith(q) || label.includes(` - ${q}`) : code.includes(q) || label.includes(q));
+    if (hit && !items.some((item) => item.code === org.code)) items.push(org);
+  };
+  const pools = () => [...parties.values(), ...reference.cwOrg.filter((org) => !parties.has(org.code))];
+  // Prefix matches rank ahead of substring matches; stop scanning once the page is full.
+  if (q) { for (const org of pools()) { consider(org, true); if (items.length > limit) break; } }
+  for (const org of pools()) { if (items.length > limit) break; consider(org, false); }
+  if (items.length > limit) { hasMore = true; items.length = limit; }
+  res.json({ items, hasMore });
+});
+router.post("/orgs/lookup", requirePermission("admin.users"), async (req, res) => {
+  const codes = Array.isArray(req.body?.codes) ? [...new Set(req.body.codes.map(String))].slice(0, 500) : [];
+  const parties = codes.some((code) => code.startsWith("tracking:")) ? trackingPartyOptions(await trackingRecords()) : new Map();
+  res.json({ items: codes.map((code) => parties.get(code) || { code, label: orgLabel(code) }) });
+});
+router.get("/reference/:type", (req, res) => { const list = reference[req.params.type]; if (!list) return res.status(404).json({ error: "Unknown reference type" }); res.json(req.params.type === "cwOrg" ? list.slice(0, 200) : list); });
 router.post("/auth/change-password", changePassword);
 router.post("/users/:id/reset-password", requirePermission("admin.users"), (req, res) => { const u = db.users.find((x) => x.id === req.params.id); if (!u) return res.status(404).json({ error: "User not found" }); res.json({ initialPassword: issueInitialPassword(u.id) }); });
 router.get("/me", (req, res) => { const def = db.roles[req.user.role] || { permissions: [], modules: [] }; res.json({ user: req.user, realRole: req.realRole, mustChangePassword: mustChangePassword(req.user.id), permissions: def.permissions, modules: effectiveModules(req.user), availableRoles: Object.keys(db.roles), availableUsers: db.users.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role })) }); });

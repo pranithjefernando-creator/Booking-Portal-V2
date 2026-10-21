@@ -2,7 +2,7 @@ import { Router } from "../lib/http.js";
 import { db, uuid, nextReference, addAudit, canSeeBooking, defaultBookingOrg, bookingShipperOrgsFor, bookingConsigneeOrgsFor, toOptions, DOC_TYPES } from "../db.js";
 import { requirePermission } from "../rbac.js";
 import { validateBooking, evaluateApproval } from "../validation.js";
-import { orgLabel, orgDetails, orgDirectory } from "../reference.js";
+import { orgLabel, orgDetails, scopedDirectory } from "../reference.js";
 import { buildBookingXml, buildBookingUpdateXml } from "../lib/cwPayload.js";
 import { sendBookingToCw } from "../lib/cwClient.js";
 const router = Router();
@@ -14,7 +14,7 @@ const CW_MANAGED = ["cw1ShipmentRef", "cwStatus", "cwHttpStatus", "cwResponse", 
 function sanitizeNewBooking(body) { const b = { ...(body || {}) }; for (const k of CW_MANAGED) delete b[k]; return b; }
 async function pushToCw(b, user, action) { const isUpdate = !!b.cw1ShipmentRef; const xml = buildXmlFor(b); let cw; try { cw = await sendBookingToCw(xml, { isUpdate }); b.cwStatus = cw.ok ? "SENT" : "FAILED"; b.cwHttpStatus = cw.status; b.cwResponse = (cw.response || cw.error || "").slice(0, 20000); b.cwSentAt = new Date().toISOString(); b.cwLastAction = isUpdate ? "UPDATE" : "CREATE"; if (cw.cwBookingNumber) b.cw1ShipmentRef = cw.cwBookingNumber; addAudit({ user, action: action || (isUpdate ? "CW_UPDATE" : "CW_SEND"), entityType: "Booking", entityId: b.reference, after: { httpStatus: cw.status, ok: cw.ok } }); } catch (e) { cw = { ok: false, status: 0, error: String(e && e.message || e), response: "" }; b.cwStatus = "FAILED"; b.cwResponse = String(e && e.message || e); } b.updatedAt = new Date().toISOString(); return { cw, isUpdate }; }
 function editableReason(b) { if (b.status === "CANCELLED") return "Cannot edit a cancelled booking"; if (b.status === "COMPLETED" && b.cwConverted) return "This booking has been converted to a shipment in CargoWise and can no longer be edited"; return null; }
-router.get("/meta/orgs", requirePermission("booking.view"), (req, res) => res.json({ shipperOrgs: toOptions(bookingShipperOrgsFor(req.user)), consigneeOrgs: toOptions(bookingConsigneeOrgsFor(req.user)), directory: orgDirectory }));
+router.get("/meta/orgs", requirePermission("booking.view"), (req, res) => { const shipperOrgs = toOptions(bookingShipperOrgsFor(req.user)); const consigneeOrgs = toOptions(bookingConsigneeOrgsFor(req.user)); res.json({ shipperOrgs, consigneeOrgs, directory: scopedDirectory([...shipperOrgs, ...consigneeOrgs]) }); });
 const TF = ["mode","incotermCode","freightTerms","originCode","destCode","cargoReadyDate","commodityCode","goodsDescription","marksAndNumbers","shipperReferenceNo","notes","shipperCode","consigneeCode","shipper","consignee","cargoLines","containers","isDg","dg","pickupRequired","pickup","dates","clientRequestedEta","handlingRemarks","documentsAccompanying"];
 function pickTemplate(src) { const out = {}; TF.forEach((k) => { if (src[k] !== undefined) out[k] = src[k]; }); (out.cargoLines || []).forEach((l) => delete l.id); (out.containers || []).forEach((c) => delete c.id); return out; }
 router.get("/templates", requirePermission("booking.create"), (req, res) => { const list = db.bookingTemplates[req.user.email] || []; res.json({ templates: list.map((t) => ({ id: t.id, name: t.name, createdAt: t.createdAt, mode: t.data?.mode || "" })) }); });

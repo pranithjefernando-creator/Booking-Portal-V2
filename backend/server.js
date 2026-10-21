@@ -10,6 +10,7 @@ import miscRouter from "./src/routes/misc.js";
 import portCongestionRouter from "./src/routes/portCongestion.js";
 import trackingRouter from "./src/routes/tracking.js";
 import { cwPublicConfig } from "./src/lib/config.js";
+import { loadOrgMaster, startOrgMasterRefresh } from "./src/lib/orgMaster.js";
 const app = createApp(); const PORT = process.env.PORT || 4000;
 seed();
 // Seed users get a shared password from SEED_DEFAULT_PASSWORD, or a one-time random password printed to the console.
@@ -22,5 +23,6 @@ v1.use("/bookings", bookingsRouter); v1.use("/approvals", approvalsRouter); v1.u
 v1.use("/", trackingRouter);
 app.use("/api/v1", v1);
 const server = app.listen(PORT, () => { const cw = cwPublicConfig(); console.log(`SBMS API on http://localhost:${PORT}  (CW: ${cw.mode}/${cw.authMode})`); });
+loadOrgMaster().then((om) => { if (om.source === "sql") console.log(`Organisation master loaded: ${om.count} orgs`); startOrgMasterRefresh(); });
 function shutdown(signal) { console.log(`${signal} received; shutting down`); server.close((err) => { if (err) { console.error(err); process.exitCode = 1; } else process.exitCode = 0; }); }
 process.once("SIGTERM", () => shutdown("SIGTERM")); process.once("SIGINT", () => shutdown("SIGINT"));

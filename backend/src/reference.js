@@ -29,5 +29,20 @@ export const orgDirectory = {
 };
 export function orgDetails(code) { const d = orgDirectory[code]; if (!d) return { code: code || "", name: orgLabel(code), address1: "", address2: "", city: "", state: "", postCode: "", country: "" }; return { ...d }; }
 export const referenceTypes = Object.keys(reference);
-export function isValidCode(type, code) { const list = reference[type]; if (!list) return true; return list.some((x) => x.code === code); }
-export function orgLabel(code) { const o = reference.cwOrg.find((x) => x.code === code); return o ? o.label : code; }
+export function isValidCode(type, code) { const list = reference[type]; if (!list) return true; if (type === "cwOrg") return orgIndex.has(code); return list.some((x) => x.code === code); }
+const orgIndex = new Map(reference.cwOrg.map((o) => [o.code, o]));
+const orgCodeByName = new Map(Object.values(orgDirectory).map((o) => [String(o.name).trim().toUpperCase(), o.code]));
+export function isKnownOrg(code) { return orgIndex.has(code); }
+export function scopedDirectory(options) { return Object.fromEntries(options.map((o) => [o.code, orgDetails(o.code)])); }
+export function orgCodeForName(name) { return orgCodeByName.get(String(name || "").trim().toUpperCase()); }
+export function orgLabel(code) { const o = orgIndex.get(code); return o ? o.label : code; }
+// Replaces the organisation list with master data; demo orgs stay unless the master defines the same code.
+export function applyOrgMaster(rows) {
+  for (const { code, name } of rows) {
+    orgIndex.set(code, { code, label: `${code} - ${name}` });
+    orgDirectory[code] = { ...(orgDirectory[code] || { address1: "", address2: "", city: "", state: "", postCode: "", country: "" }), code, name };
+    orgCodeByName.set(String(name).trim().toUpperCase(), code);
+  }
+  reference.cwOrg.length = 0;
+  for (const org of orgIndex.values()) reference.cwOrg.push(org);
+}

@@ -177,6 +177,8 @@ input.ro,.ro { background:#f4f7fb; color:#334155; border-color:#e2e9f1; cursor:d
 .success-modal-body { display:flex; align-items:flex-start; gap:14px; } .success-modal-icon { flex:0 0 48px; width:48px; height:48px; display:grid; place-items:center; border-radius:50%; color:#168043; background:#e5f8eb; border:1px solid #bfe8cc; } .success-modal-message { margin:2px 0 5px; color:var(--navy); font-size:14px; font-weight:800; line-height:1.4; } .success-modal-detail { margin:0; color:var(--muted); font-size:12.5px; line-height:1.5; }
 .check-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px 14px; max-height:280px; overflow-y:auto; } .check-item { display:flex; align-items:center; gap:8px; font-size:13px; } .check-item input { width:auto; } .role-cols { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:12px; } .role-col-head { font-weight:800; margin-bottom:8px; color:var(--navy); font-size:13px; } @media(max-width:640px){ .role-cols,.check-grid { grid-template-columns:1fr; } }
 .org-checklist-search { width:100%; box-sizing:border-box; padding:8px 12px; margin-bottom:9px; border:1px solid var(--line); border-radius:8px; font-size:13px; }
+.org-selected { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:9px; max-height:120px; overflow:auto; }
+.org-selected .chip { display:inline-flex; align-items:center; gap:4px; max-width:100%; }
 :root { --search-surface:#fff2e7; --search-border:#edbc97; --search-accent:#a84b15; --search-focus:rgba(214,113,42,.2); }
 .filter-card,.shipment-filter-card,.tracking-search.card { background:var(--search-surface); border-color:var(--search-border); box-shadow:inset 4px 0 0 #e99b60,var(--shadow-sm); }
 .searchbar { background:var(--search-surface); border-color:var(--search-border); }

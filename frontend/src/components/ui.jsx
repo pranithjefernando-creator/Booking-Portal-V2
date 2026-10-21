@@ -1,6 +1,7 @@
 import React from "react";
 import { IconBox, IconChevron, IconPlane, IconShip, IconWarehouse } from "./icons.jsx";
 import { usePagination } from "../lib/pagination.js";
+import { api } from "../api.js";
 const S = { DRAFT: { bg: "#E5E7EB", fg: "#374151" }, VALIDATED: { bg: "#DBEAFE", fg: "#1D4ED8" }, PENDING_APPROVAL: { bg: "#FEF3C7", fg: "#B45309" }, APPROVED: { bg: "#DCFCE7", fg: "#15803D" }, COMPLETED: { bg: "#DCFCE7", fg: "#166534" }, CANCELLED: { bg: "#F3F4F6", fg: "#6B7280" }, PENDING: { bg: "#FEF3C7", fg: "#B45309" }, SHIPPED: { bg: "#DCFCE7", fg: "#166534" }, OVERDUE: { bg: "#FEE2E2", fg: "#B91C1C" } };
 export function StatusBadge({ status }) { const s = S[status] || S.DRAFT; return <span className="badge" style={{ background: s.bg, color: s.fg }}>{String(status || "").replace("_", " ")}</span>; }
 export function KpiCard({ label, value, tone = "blue" }) { return <div className={`kpi kpi-${tone}`}><div className="kpi-value">{value}</div><div className="kpi-label">{label}</div></div>; }
@@ -66,6 +67,31 @@ export function OrgChecklist({ options, selected, onToggle, disabled, empty }) {
     {options.length > 8 && <input type="text" className="org-checklist-search" placeholder="Search organizations…" value={q} onChange={(e) => setQ(e.target.value)} />}
     {filtered.length === 0 ? <p className="muted">No organizations match "{q}".</p> : (<div className="check-grid">{pagination.items.map((o) => (<label key={o.code} className="check-item"><input type="checkbox" disabled={disabled} checked={selected.includes(o.code)} onChange={() => onToggle(o.code)} /> {o.label}</label>))}</div>)}
     {(options.length > 25 || pagination.pageSize !== 25) && <Pagination pagination={pagination} label="Organizations" />}
+  </div>);
+}
+export function OrgSearchPicker({ kind = "cw", selected, onToggle, labels, onLabels, disabled }) {
+  const [q, setQ] = React.useState("");
+  const [state, setState] = React.useState({ items: [], hasMore: false, loading: true, error: "" });
+  React.useEffect(() => {
+    let alive = true;
+    const timer = setTimeout(() => {
+      setState((s) => ({ ...s, loading: true }));
+      api.get(`/orgs/search?kind=${kind}&limit=25&q=${encodeURIComponent(q.trim())}`)
+        .then((d) => { if (!alive) return; onLabels(d.items); setState({ items: d.items, hasMore: d.hasMore, loading: false, error: "" }); })
+        .catch((e) => alive && setState({ items: [], hasMore: false, loading: false, error: e.message }));
+    }, q ? 250 : 0);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [q, kind]); // eslint-disable-line
+  const missing = selected.filter((code) => !labels[code]).join(",");
+  React.useEffect(() => {
+    if (!missing) return;
+    api.post("/orgs/lookup", { codes: missing.split(",") }).then((d) => onLabels(d.items)).catch(() => {});
+  }, [missing]); // eslint-disable-line
+  return (<div className="org-checklist">
+    {selected.length > 0 && <div className="org-selected" aria-label="Selected organizations">{selected.map((code) => (<span key={code} className="chip" title={labels[code] || code}>{labels[code] || code}{!disabled && <button type="button" className="btn-x" aria-label={`Remove ${code}`} onClick={() => onToggle(code)}>×</button>}</span>))}</div>}
+    <input type="text" className="org-checklist-search" placeholder="Type a code or name to search organizations…" value={q} onChange={(e) => setQ(e.target.value)} />
+    {state.error ? <p className="muted">{state.error}</p> : state.loading && !state.items.length ? <p className="muted">Searching…</p> : state.items.length === 0 ? <p className="muted">No organizations match "{q}".</p> : (<div className="check-grid">{state.items.map((o) => (<label key={o.code} className="check-item"><input type="checkbox" disabled={disabled} checked={selected.includes(o.code)} onChange={() => onToggle(o.code)} /> {o.label}</label>))}</div>)}
+    {state.hasMore && <p className="muted">Showing the first 25 matches — keep typing to narrow the list.</p>}
   </div>);
 }
 export function DocViewer({ api, doc, contentPath, downloadPath, onClose }) {
